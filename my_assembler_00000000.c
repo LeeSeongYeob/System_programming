@@ -10,7 +10,7 @@
  * 프로그램의 헤더를 정의한다. 
  *
  */
-
+#define string(a) #a
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,24 +30,22 @@
  */
 int main(int args, char *arg[])
 {
-#ifdef DEBUG
-	init_inst_file("inst.data"); //Debug
-								 // init_input_file("input.txt"); // Debug
-								 // token_parsing(input_data[0]);
-#endif
+	// init_inst_file("inst.data");
+	init_input_file("input.txt"); // Debug
+	assem_pass1();
 
-	if (init_my_assembler() < 0)
-	{
-		printf("init_my_assembler: 프로그램 초기화에 실패 했습니다.\n");
-		return -1;
-	}
+	// if (init_my_assembler() < 0)
+	// {
+	// 	printf("init_my_assembler: 프로그램 초기화에 실패 했습니다.\n");
+	// 	return -1;
+	// }
 
-	if (assem_pass1() < 0)
-	{
-		printf("assem_pass1: 패스1 과정에서 실패하였습니다.  \n");
-		return -1;
-	}
-	make_opcode_output("output_00000000");
+	// if (assem_pass1() < 0)
+	// {
+	// 	printf("assem_pass1: 패스1 과정에서 실패하였습니다.  \n");
+	// 	return -1;
+	// }
+	// make_opcode_output("output_00000000");
 
 	/*
 	* 추후 프로젝트에서 사용되는 부분
@@ -96,12 +94,27 @@ int init_my_assembler(void)
  *		
  * ----------------------------------------------------------------------------------
  */
+
+//
+// char *inst_memory_allocation(char *parameter, char *inst_token)
+// {
+// 	parameter = (char *)malloc(strlen(inst_token));
+// 	strcpy(parameter, inst_token);
+// 	inst_token = strtok(NULL, "\t");
+// 	return (parameter);
+// }
+
+void inst_memory_allocation(char **parameter, char **inst_token)
+{
+	*parameter = (char *)malloc(strlen(*inst_token));
+	strcpy(*parameter, *inst_token);
+	*inst_token = strtok(NULL, "\t");
+}
 int init_inst_file(char *inst_file)
 {
-	/* add your code here */
 	FILE *file;
 	int errno;
-	char buffer[256] = {
+	char buffer[100] = {
 		-1,
 	};
 	char *inst_token = NULL;
@@ -111,31 +124,47 @@ int init_inst_file(char *inst_file)
 		return -1;
 	for (int i = 0; i < MAX_INST; i++)
 	{
-		if (feof(file))
-			break;
 		fgets(buffer, sizeof(buffer), file);
 		inst_table[i] = (inst *)malloc(sizeof(inst));
 		inst_token = strtok(buffer, "\t");
+		if (feof(file))
+			break;
 		while (inst_token != NULL)
 		{
 			//mnemonic 값 토큰 복사
-			inst_table[i]->mnemonic = (char *)malloc(strlen(inst_token));
-			strcpy(inst_table[i]->mnemonic, inst_token);
+			inst_memory_allocation(&(inst_table[i]->mnemonic), &inst_token);
+
+			//operand_count 값 토큰 복사
+			inst_table[i]->operand_count = atoi(inst_token);
 			inst_token = strtok(NULL, "\t");
 
 			//format 값 토큰 복사
-			inst_table[i]->format = (char *)malloc(strlen(inst_token));
-			strcpy(inst_table[i]->format, inst_token);
-			inst_token = strtok(NULL, "\t");
+			inst_memory_allocation(&(inst_table[i]->format), &inst_token);
 
 			//opcode 값 토큰 복사
-			inst_token[strlen(inst_token) - 1] = '\0';
-			inst_table[i]->opcode = (char *)malloc(strlen(inst_token));
-			strcpy(inst_table[i]->opcode, inst_token);
-			inst_token = strtok(NULL, "\t");
+			inst_token[strlen(inst_token) - 1] = '\0'; //개행문자 제거
+			inst_memory_allocation(&(inst_table[i]->opcode), &inst_token);
+
+			// inst_memory_allocation(inst_table[i]->mnemonic, inst_token);
+			// inst_table[i]->mnemonic = (char *)malloc(strlen(inst_token));
+			// strcpy(inst_table[i]->mnemonic, inst_token);
+			// inst_token = strtok(NULL, "\t");
+			// inst_table[i]->format = inst_memory_allocation(inst_table[i]->format, inst_token);
+
+			//format 값 토큰 복사
+			// inst_table[i]->format = (char *)malloc(strlen(inst_token));
+			// strcpy(inst_table[i]->format, inst_token);
+			// inst_token = strtok(NULL, "\t");
+
+			//opcode 값 토큰 복사
+
+			// inst_table[i]->opcode = (char *)malloc(strlen(inst_token));
+			// strcpy(inst_table[i]->opcode, inst_token);
+			// inst_token = strtok(NULL, "\t");
 
 #ifdef DEBUG
 			printf("%s	", inst_table[i]->mnemonic);
+			printf("%d	", inst_table[i]->operand_count);
 			printf("%s	", inst_table[i]->format);
 			printf("%s	\n", inst_table[i]->opcode);
 
@@ -181,7 +210,6 @@ int init_input_file(char *input_file)
 
 #ifdef DEBUG
 		// printf("%s\n", input_data[i]);
-		printf("len : %d \n ", strlen(input_data[i]));
 #endif
 	}
 	fclose(file);
@@ -196,15 +224,97 @@ int init_input_file(char *input_file)
  * 주의 : my_assembler 프로그램에서는 라인단위로 토큰 및 오브젝트 관리를 하고 있다. 
  * ----------------------------------------------------------------------------------
  */
+void clear_token_table(token *token_table)
+{
+	token_table->label = NULL;
+	token_table->operator= NULL;
+	token_table->comment = NULL;
+	for (int i = 0; i < MAX_OPERAND; i++)
+		token_table->operand[i] = NULL;
+}
 int token_parsing(char *str)
 {
 	/* add your code here */
 	char *parsing_token = NULL;
-	parsing_token = strtok(str, "\t");
+	char *sub_parsing_token = NULL; //여러개의 operand 가 있을경우 사용할 토큰
+	int islabel = 0;				// 0 : label 없음, 1 : label 존재
+	char str_buffer[256] = {
+		0,
+	};
+
+	token_table[token_line] = (token *)malloc(sizeof(token));
+	strcpy(str_buffer, str);
+	//토큰 초기화
+	clear_token_table(token_table[token_line]);
+
+	//라벨의 유무 검사
+	if (str[0] != '\t')
+		islabel = 1;
+	parsing_token = strtok(str_buffer, "\t");
 	while (parsing_token != NULL)
 	{
-		printf("%s \n", parsing_token);
+		//Label 이 존재하는 input line
+		if (islabel == 1)
+		{
+			token_table[token_line]->label = (char *)malloc(strlen(parsing_token));
+			strcpy(token_table[token_line]->label, parsing_token);
+			parsing_token = strtok(NULL, "\t");
+		}
+		else
+		{
+			token_table[token_line]->label = NULL;
+		}
+
+		token_table[token_line]->operator=(char *) malloc(strlen(parsing_token));
+		strcpy(token_table[token_line]->operator, parsing_token);
+		parsing_token = strtok(NULL, "\t");
+
+		//인자가 여러개 인 경우
+		if (strchr(parsing_token, ','))
+		{
+			int operand_index = 0;
+			sub_parsing_token = strtok(parsing_token, ",");
+			while (sub_parsing_token != NULL)
+			{
+				token_table[token_line]->operand[operand_index] = (char *)malloc(strlen(sub_parsing_token));
+				strcpy(token_table[token_line]->operand[operand_index++], sub_parsing_token);
+
+				//operand 후, 개행문자가 나오는 경우
+				if (sub_parsing_token[strlen(sub_parsing_token) - 1] == '\n')
+				{
+					sub_parsing_token[strlen(sub_parsing_token) - 1] = '\0';
+					sub_parsing_token = strtok(NULL, ",");
+				}
+				else
+				{
+					sub_parsing_token = strtok(NULL, ",");
+					parsing_token = strtok(NULL, "\t");
+				}
+			}
+		}
+		//operand인자가 1개 인 경우
+		else
+		{
+			token_table[token_line]->operand[0] = (char *)malloc(strlen(parsing_token));
+			strcpy(token_table[token_line]->operand[0], parsing_token);
+			parsing_token = strtok(NULL, "\t");
+		}
+
+		//comment 부분 동적 할당  TODO : comment 가 없는 경우 ?
+		token_table[token_line]->comment = (char *)malloc(strlen(parsing_token));
+		strcpy(token_table[token_line]->comment, parsing_token);
+		parsing_token = strtok(NULL, "\t");
+
+#ifdef DEBUG
+		printf("%s\t", token_table[token_line]->label);
+		printf("%s\t", token_table[token_line]->operator);
+		printf("%s\t", token_table[token_line]->operand[2]);
+		printf("%s\n", token_table[token_line]->comment);
+#endif
+		token_line++;
 	}
+
+	return 0;
 }
 
 /* ----------------------------------------------------------------------------------
@@ -240,6 +350,11 @@ static int assem_pass1(void)
 	/* input_data의 문자열을 한줄씩 입력 받아서 
 	 * token_parsing()을 호출하여 token_unit에 저장
 	 */
+	for (int i = 0; i < 5; i++)
+	{
+		token_parsing(input_data[i]);
+	}
+	return 0;
 }
 
 /* ----------------------------------------------------------------------------------

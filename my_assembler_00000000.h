@@ -15,6 +15,7 @@ struct inst_unit
 {
     /* add your code here */
     char *mnemonic;
+    int operand_count;
     char *format;
     char *opcode;
 };
