@@ -141,6 +141,7 @@ int init_inst_file(char *inst_file)
 			//opcode 값 토큰 복사
 			inst_token[strlen(inst_token) - 1] = '\0'; //개행문자 제거
 			memory_allocation(&(inst_table[i]->opcode), &inst_token);
+			inst_index++;
 
 #ifdef DEBUG
 			printf("%s	", inst_table[i]->mnemonic);
@@ -149,8 +150,6 @@ int init_inst_file(char *inst_file)
 			printf("%s	\n", inst_table[i]->opcode);
 
 #endif
-
-			inst_index++;
 		}
 	}
 	fclose(file);
@@ -343,7 +342,18 @@ int token_parsing(char *str)
  */
 int search_opcode(char *str)
 {
+	char *temp = str;
+	if (str[0] == '+')
+		temp = str + 1;
 	/* add your code here */
+	for (int i = 0; i < inst_index; i++)
+	{
+		if (!(strcmp(inst_table[i]->mnemonic, temp)))
+		{
+			return i;
+		}
+	}
+	return -1;
 }
 
 /* ----------------------------------------------------------------------------------
@@ -392,6 +402,7 @@ void make_opcode_output(char *file_name)
 	char buffer[128] = {
 		0,
 	};
+	int operator_index = 0;
 	for (int i = 0; i < token_line; i++)
 	{
 		//label 출력
@@ -426,9 +437,18 @@ void make_opcode_output(char *file_name)
 			}
 			else
 			{
-				fputs("\n", file);
-				break;
+				fputs("\t", file);
 			}
+		}
+		operator_index = search_opcode(token_table[i]->operator);
+		if (operator_index != -1)
+		{
+			fputs(inst_table[operator_index]->opcode, file);
+			fputs("\n", file);
+		}
+		else
+		{
+			fputs("\n", file);
 		}
 	}
 	return;
