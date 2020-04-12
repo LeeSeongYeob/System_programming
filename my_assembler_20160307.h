@@ -89,6 +89,10 @@ int token_parsing(char *str);
 int search_opcode(char *str);
 static int assem_pass1(void);
 void make_opcode_output(char *file_name);
+//메모리를 할당하고, token 제어를 위한 함수
+void memory_allocation(char **parameter, char **inst_token);
+//token table을 초기화 해주는 함수
+void clear_token_table(token *token_table);
 
 /* 추후 프로젝트에서 사용하게 되는 함수*/
 void make_symtab_output(char *file_name);

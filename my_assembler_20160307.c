@@ -1,5 +1,5 @@
 /*
- * 화일명 : my_assembler_00000000.c 
+ * 화일명 : my_assembler_20160307.c 
  * 설  명 : 이 프로그램은 SIC/XE 머신을 위한 간단한 Assembler 프로그램의 메인루틴으로,
  * 입력된 파일의 코드 중, 명령어에 해당하는 OPCODE를 찾아 출력한다.
  * 파일 내에서 사용되는 문자열 "00000000"에는 자신의 학번을 기입한다.
@@ -14,11 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
-// #define DEBUG 1
-static int debug_count;
-// 파일명의 "00000000"은 자신의 학번으로 변경할 것.
 #include "my_assembler_20160307.h"
-void debug_print();
 
 /* ----------------------------------------------------------------------------------
  * 설명 : 사용자로 부터 어셈블리 파일을 받아서 명령어의 OPCODE를 찾아 출력한다.
@@ -30,27 +26,18 @@ void debug_print();
  */
 int main(int args, char *arg[])
 {
-	init_inst_file("inst.data");
-	init_input_file("input.txt"); // Debug
-	printf("Input file Line number = %d\n", line_num);
-	// for (int i = 0; i < MAX_LINES; i++)
-	// 	printf("%s\n", input_data[i]);
-	assem_pass1();
-	debug_print();
-	printf("DEbug count = %d ", debug_count);
-	make_opcode_output("output.txt");
-	// if (init_my_assembler() < 0)
-	// {
-	// 	printf("init_my_assembler: 프로그램 초기화에 실패 했습니다.\n");
-	// 	return -1;
-	// }
+	if (init_my_assembler() < 0)
+	{
+		printf("init_my_assembler: 프로그램 초기화에 실패 했습니다.\n");
+		return -1;
+	}
 
-	// if (assem_pass1() < 0)
-	// {
-	// 	printf("assem_pass1: 패스1 과정에서 실패하였습니다.  \n");
-	// 	return -1;
-	// }
-	// make_opcode_output("output_00000000");
+	if (assem_pass1() < 0)
+	{
+		printf("assem_pass1: 패스1 과정에서 실패하였습니다.  \n");
+		return -1;
+	}
+	make_opcode_output("output_20160307.txt");
 
 	/*
 	* 추후 프로젝트에서 사용되는 부분
@@ -142,14 +129,6 @@ int init_inst_file(char *inst_file)
 			inst_token[strlen(inst_token) - 1] = '\0'; //개행문자 제거
 			memory_allocation(&(inst_table[i]->opcode), &inst_token);
 			inst_index++;
-
-#ifdef DEBUG
-			printf("%s	", inst_table[i]->mnemonic);
-			printf("%d	", inst_table[i]->operand_count);
-			printf("%s	", inst_table[i]->format);
-			printf("%s	\n", inst_table[i]->opcode);
-
-#endif
 		}
 	}
 	fclose(file);
@@ -181,15 +160,16 @@ int init_input_file(char *input_file)
 		if (feof(file))
 			break;
 		fgets(buffer, sizeof(buffer), file);
+		//마지막 input파일에 있는 공백 무시
+		if (buffer[0] == NULL)
+		{
+			continue;
+		}
 		input_data[i] = (char *)malloc(sizeof(buffer));
 		//개행문자 제거함
 		buffer[strlen(buffer) - 1] = '\0';
 		strcpy(input_data[i], buffer);
 		line_num++;
-
-#ifdef DEBUG
-		printf("%s\n", input_data[i]);
-#endif
 	}
 	fclose(file);
 	return errno;
@@ -210,38 +190,6 @@ void clear_token_table(token *token_table)
 	token_table->comment = NULL;
 	for (int i = 0; i < MAX_OPERAND; i++)
 		token_table->operand[i] = NULL;
-}
-
-//디버깅용, 후 삭제 예정
-void debug_print()
-{
-	for (int i = 0; i < token_line; i++)
-	{
-		debug_count++;
-		// if(token_table[token_line]->label){
-		printf("%s\t", token_table[i]->label);
-		printf("%s\t", token_table[i]->operator);
-		for (int k = 0; k < 3; k++)
-		{
-			if (token_table[i]->operand[k])
-			{
-				if (k == 0)
-					printf("%s", token_table[i]->operand[k]);
-				else
-					printf(",%s", token_table[i]->operand[k]);
-			}
-			else
-			{
-				printf("\t");
-				break;
-			}
-		}
-		if ((token_table[i]->comment) == NULL)
-			printf("\n");
-		else
-			printf("%s\n", token_table[i]->comment);
-	}
-	return;
 }
 int token_parsing(char *str)
 {
@@ -397,61 +345,123 @@ static int assem_pass1(void)
 */
 void make_opcode_output(char *file_name)
 {
-	/* add your code here */
-	FILE *file = fopen(file_name, "w");
 	char buffer[128] = {
 		0,
 	};
 	int operator_index = 0;
-	for (int i = 0; i < token_line; i++)
+	// 파일 이름이 NULL인 경우 표준툴력을 해준다.
+	if (file_name == NULL)
 	{
-		//label 출력
-		if (token_table[i]->label)
+		// 파일 이름이 NULL 이 아닌 경우
+		for (int i = 0; i < token_line; i++)
 		{
-			fputs(token_table[i]->label, file);
-			fputs("\t", file);
-		}
-		else
-			fputs("\t", file);
-		//operator 출력
-		if (token_table[i]->operator)
-		{
-			fputs(token_table[i]->operator, file);
-			fputs("\t", file);
-		}
-		else
-			fputs("\t", file);
-
-		//operand 출력
-		for (int k = 0; k < 3; k++)
-		{
-			if (token_table[i]->operand[k])
+			//label 출력
+			if (token_table[i]->label)
 			{
-				if (k == 0)
-					fputs(token_table[i]->operand[k], file);
+				fputs(token_table[i]->label, stdout);
+				fputs("\t", stdout);
+			}
+			else
+				fputs("\t", stdout);
+			//operator 출력
+			if (token_table[i]->operator)
+			{
+				fputs(token_table[i]->operator, stdout);
+				fputs("\t", stdout);
+			}
+			else
+				fputs("\t", stdout);
+
+			//operand 출력
+			for (int k = 0; k < 3; k++)
+			{
+				//operand 갯수는 가변적이기 때문에 operand값이 null 이 아닐때 까지 출력
+				if (token_table[i]->operand[k])
+				{
+					if (k == 0)
+						fputs(token_table[i]->operand[k], stdout);
+					else
+					{
+						fputs(",", stdout);
+						fputs(token_table[i]->operand[k], stdout);
+					}
+				}
 				else
 				{
-					fputs(",", file);
-					fputs(token_table[i]->operand[k], file);
+					fputs("\t", stdout);
+					break;
 				}
+			}
+			//opcode를 search_opcode 메소드를 활용하여 inst_table에서 찾아서 출력.
+			operator_index = search_opcode(token_table[i]->operator);
+			if (operator_index != -1)
+			{
+				fputs(inst_table[operator_index]->opcode, stdout);
+				fputs("\n", stdout);
 			}
 			else
 			{
-				fputs("\t", file);
+				fputs("\n", stdout);
 			}
 		}
-		operator_index = search_opcode(token_table[i]->operator);
-		if (operator_index != -1)
-		{
-			fputs(inst_table[operator_index]->opcode, file);
-			fputs("\n", file);
-		}
-		else
-		{
-			fputs("\n", file);
-		}
 	}
-	return;
+	// 파일 이름이 NULL 이 아닌 경우
+	else
+	{
+		FILE *file = fopen(file_name, "w");
+		for (int i = 0; i < token_line; i++)
+		{
+			//label 출력
+			if (token_table[i]->label)
+			{
+				fputs(token_table[i]->label, file);
+				fputs("\t", file);
+			}
+			else
+				fputs("\t", file);
+			//operator 출력
+			if (token_table[i]->operator)
+			{
+				fputs(token_table[i]->operator, file);
+				fputs("\t", file);
+			}
+			else
+				fputs("\t", file);
+
+			//operand 출력
+			for (int k = 0; k < 3; k++)
+			{
+				//operand 갯수는 가변적이기 때문에 operand값이 null 이 아닐때 까지 출력
+				if (token_table[i]->operand[k])
+				{
+					if (k == 0)
+						fputs(token_table[i]->operand[k], file);
+					else
+					{
+						fputs(",", file);
+						fputs(token_table[i]->operand[k], file);
+					}
+				}
+				else
+				{
+					fputs("\t", file);
+					break;
+				}
+			}
+			//opcode를 search_opcode 메소드를 활용하여 inst_table에서 찾아서 출력
+			operator_index = search_opcode(token_table[i]->operator);
+			if (operator_index != -1)
+			{
+				fputs(inst_table[operator_index]->opcode, file);
+				fputs("\n", file);
+			}
+			else
+			{
+				fputs("\n", file);
+			}
+		}
+		fclose(file);
+	}
 }
 
 /* ----------------------------------------------------------------------------------
