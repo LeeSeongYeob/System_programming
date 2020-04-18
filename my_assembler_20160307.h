@@ -15,7 +15,7 @@ struct inst_unit
 {
     /* add your code here */
     char *mnemonic;
-    int operand_count;
+    int operand_count; //operand 갯수
     char *format;
     char *opcode;
 };
@@ -42,7 +42,8 @@ struct token_unit
     char *operator;             //명령어 라인 중 operator
     char *operand[MAX_OPERAND]; //명령어 라인 중 operand
     char *comment;              //명령어 라인 중 comment
-    //char nixbpe; // 추후 프로젝트에서 사용된다.
+    // char nixbpe;
+    int location; // 추후 프로젝트에서 사용된다.
 };
 
 typedef struct token_unit token;
@@ -58,10 +59,13 @@ struct symbol_unit
 {
     char symbol[10];
     int addr;
+    int session;
 };
 
 typedef struct symbol_unit symbol;
 symbol sym_table[MAX_LINES];
+//symbol 의 갯수를 관리하기 위한 변수
+static int symbol_line;
 
 /*
 * 리터럴을 관리하는 구조체이다.
@@ -72,12 +76,23 @@ struct literal_unit
 {
     char literal[10];
     int addr;
+    //token_table에 있는 literal주소
+    int token_index;
 };
 
 typedef struct literal_unit literal;
 literal literal_table[MAX_LINES];
+//리터럴 문자 token_table 할당하기 위한 변수
+static int literal_count;
+//literal 의 개수를 관리하기 위한 변수
+static int literal_line;
+//LTORG에 의해 할당되지 않은 리터럴 인덱스저장 변수
+static int literal_index;
 
 static int locctr;
+//세션 길이를 저장할 배열
+int session_length[4];
+static int session_count;
 //--------------
 
 static char *input_file;
@@ -89,10 +104,17 @@ int token_parsing(char *str);
 int search_opcode(char *str);
 static int assem_pass1(void);
 void make_opcode_output(char *file_name);
-//메모리를 할당하고, token 제어를 위한 함수
+//새로 만든 함수
+//메모리를 할당해주는 함수.(token 제어 포함)
 void memory_allocation(char **parameter, char **inst_token);
-//token table을 초기화 해주는 함수
+//token_table을  초기화 해주는 함수
 void clear_token_table(token *token_table);
+
+int search_literal_table(char* str);
+
+char* literal_erase_quote(char* ptr);
+
+int find_addr_symbol_from_table(char* str);
 
 /* 추후 프로젝트에서 사용하게 되는 함수*/
 void make_symtab_output(char *file_name);

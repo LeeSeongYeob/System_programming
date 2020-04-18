@@ -15,6 +15,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include "my_assembler_20160307.h"
+#pragma warning(disable: 4996)
 
 /* ----------------------------------------------------------------------------------
  * 설명 : 사용자로 부터 어셈블리 파일을 받아서 명령어의 OPCODE를 찾아 출력한다.
@@ -37,19 +38,16 @@ int main(int args, char *arg[])
 		printf("assem_pass1: 패스1 과정에서 실패하였습니다.  \n");
 		return -1;
 	}
-	make_opcode_output("output_20160307.txt");
+	//make_opcode_output(NULL);
+	 make_symtab_output("Symtab_output_20160307.txt");
+	 make_literaltab_output("literaltab_output_20160307.txt");
+	// if (assem_pass2() < 0)
+	// {
+	// 	printf("assem_pass2: 패스2 과정에서 실패하였습니다.  \n");
+	// 	return -1;
+	// }
 
-	/*
-	* 추후 프로젝트에서 사용되는 부분
-	
-	make_symtab_output("symtab_00000000");
-	if(assem_pass2() < 0 ){
-		printf(" assem_pass2: 패스2 과정에서 실패하였습니다.  \n") ; 
-		return -1 ; 
-	}
-
-	make_objectcode_output("output_00000000") ; 
-	*/
+	// make_objectcode_output("output_00000000");
 	return 0;
 }
 
@@ -167,6 +165,7 @@ int init_input_file(char *input_file)
 		}
 		input_data[i] = (char *)malloc(sizeof(buffer));
 		//개행문자 제거함
+		if(buffer[strlen(buffer) - 1] == '\n')
 		buffer[strlen(buffer) - 1] = '\0';
 		strcpy(input_data[i], buffer);
 		line_num++;
@@ -190,6 +189,7 @@ void clear_token_table(token *token_table)
 	token_table->comment = NULL;
 	for (int i = 0; i < MAX_OPERAND; i++)
 		token_table->operand[i] = NULL;
+	token_table->location = 0;
 }
 int token_parsing(char *str)
 {
@@ -197,6 +197,9 @@ int token_parsing(char *str)
 	char *parsing_token = NULL;
 	char *sub_parsing_token = NULL; //여러개의 operand 가 있을경우 사용할 토큰
 	int islabel = 0;				// 0 : label 없음, 1 : label 존재
+	int LTORG_index = 0;			//리터럴 문자제어 index 나타낼 변수
+	// int before_literal_count = 0;			//할당을 마친 이전의 literal 개수
+
 	char str_buffer[100] = {
 		0,
 	};
@@ -204,7 +207,6 @@ int token_parsing(char *str)
 	//토큰 초기화
 	token_table[token_line] = (token *)malloc(sizeof(token));
 	clear_token_table(token_table[token_line]);
-	//str 값 str_buffer 에 복사.
 	strcpy(str_buffer, str);
 
 	//라벨의 유무 검사
@@ -220,7 +222,7 @@ int token_parsing(char *str)
 	}
 	while (parsing_token != NULL)
 	{
-		//Label 이 존재하는 input line
+		/********************Label 인자 할당 부분************************/
 		if (islabel == 1)
 		{
 			memory_allocation(&(token_table[token_line]->label), &parsing_token);
@@ -231,16 +233,63 @@ int token_parsing(char *str)
 			memory_allocation(&(token_table[token_line]->operator), &parsing_token);
 			memory_allocation(&(token_table[token_line]->comment), &parsing_token);
 			token_line++;
-			return 0;
+			break;
 		}
-		//Operator 인자 할당
-		memory_allocation(&(token_table[token_line]->operator), &parsing_token);
-		if (parsing_token == NULL)
+		/*******************Literal 할당 부분 *******************/
+		//만약 LTORG일 경우
+		if (!(strcmp(parsing_token, "LTORG")))
 		{
+			LTORG_index = token_line;
+			if (literal_count > 0)
+			{
+				for (int i = 0; i < literal_count; i++)
+				{
+					//토큰테이블 생성및 초기화
+					token_table[++token_line] = (token *)malloc(sizeof(token));
+					clear_token_table(token_table[token_line]);
+					token_table[token_line]->operator = (char*)malloc(sizeof(char) * 10);
+					//리터럴 테이블에서 토큰 테이블로 할당
+					literal_table[literal_index].token_index = token_line;
+					strcpy(token_table[token_line]->operator, literal_table[literal_index++].literal);
+				}
+				literal_count = 0;
+			}
+			//할당받지 못한 literal이 없을 경우
+			memory_allocation(&(token_table[token_line - 1]->operator), &parsing_token);
 			token_line++;
-			return 0;
+			break;
 		}
+		//파일 종료시까지 할당되지 않은 Literal 문자 존재할 경우
+		if (!(strcmp(parsing_token, "END")) && (literal_count > 0)) {
 
+			for (int i = 0; i < literal_count; i++)
+			{
+				token_table[++token_line] = (token*)malloc(sizeof(token));
+				clear_token_table(token_table[token_line]);
+				token_table[token_line]->operator = (char*)malloc(sizeof(char) * 10);
+
+				literal_table[literal_index].token_index = token_line;
+				strcpy(token_table[token_line]->operator, literal_table[literal_index++].literal);
+			}
+			literal_count = 0;
+			memory_allocation(&(token_table[token_line - 1]->operator), &parsing_token);
+			//end 의 operand
+			memory_allocation(&(token_table[token_line - 1]->operand[0]), &parsing_token);
+			token_line++;
+			break;
+
+		}
+			/********************operator 인자 할당 부분************************/
+		else {
+			memory_allocation(&(token_table[token_line]->operator), &parsing_token);
+			//CSECT 처리
+			if (parsing_token == NULL)
+			{
+				token_line++;
+				break;
+			}
+		}
+		/********************operand 인자 할당 부분************************/
 		//Operand 인자가 여러개 인 경우 ","로 구분되는 sub 토큰
 		if (strchr(parsing_token, ','))
 		{
@@ -257,18 +306,29 @@ int token_parsing(char *str)
 			if (!(parsing_token = strtok(NULL, "\t")))
 			{
 				token_line++;
-				return 0;
+				break;
 			}
 		}
 		//operand인자가 1개 인 경우
 		else
 		{
+			/***************Literal 문자를 만날 경우, literal_table 생성하는 부분*********************/
+			if (parsing_token[0] == '=')
+			{
+				//TODO : 중복된 리터럴 있을 시 0 , 없을 시 1.
+				if (search_literal_table(parsing_token)){
+				literal_count++;
+				// token_table 의 index와 문자 넣어줌
+				//literal_table[literal_line].token_index = token_line;
+				strcpy(literal_table[literal_line++].literal, parsing_token);
+				}
+			}
 			memory_allocation(&(token_table[token_line]->operand[0]), &parsing_token);
 			//comment 인자 없을 경우 종료
 			if (parsing_token == NULL)
 			{
 				token_line++;
-				return 0;
+				break;
 			}
 		}
 
@@ -279,7 +339,13 @@ int token_parsing(char *str)
 
 	return 0;
 }
-
+int search_literal_table(char *str) {
+	for (int i = 0; i < literal_line; i++) {
+		if (!(strcmp(str, literal_table[i].literal)))
+			return 0;
+	}
+		return 1;
+}
 /* ----------------------------------------------------------------------------------
  * 설명 : 입력 문자열이 기계어 코드인지를 검사하는 함수이다. 
  * 매계 : 토큰 단위로 구분된 문자열 
@@ -291,6 +357,8 @@ int token_parsing(char *str)
 int search_opcode(char *str)
 {
 	char *temp = str;
+	if (str == NULL)
+		return -1;
 	if (str[0] == '+')
 		temp = str + 1;
 	/* add your code here */
@@ -324,10 +392,119 @@ static int assem_pass1(void)
 	/* input_data의 문자열을 한줄씩 입력 받아서 
 	 * token_parsing()을 호출하여 token_unit에 저장
 	 */
-
-	for (int i = 0; i < line_num; i++)
+	int errno;
+	for (int i = 0; i < MAX_INST; i++)
 	{
-		token_parsing(input_data[i]);
+		if (input_data[i] ==NULL){
+			break;
+		}
+		else
+			if (token_parsing(input_data[i]) < 0) {
+				errno = -1;
+				return errno;
+
+		}
+	}
+
+	//TODO : location 할당 부분
+	for (int index = 0; index < token_line; index++) {
+		if (index == (token_line - 1)) {
+			session_length[session_count] = location_allocation(token_table[index]->operator,index);
+			break;
+		}
+		token_table[index+1]->location = location_allocation(token_table[index]->operator,index);
+	}
+
+
+	return errno;
+}
+/***********************************************
+ * 메모리 주소 할당 함수. Locctr 값 리턴.
+ * *********************************************/
+int location_allocation(char *str, int token_line)
+{
+	int index = search_opcode(str);
+	// opcode 없을 시, -1 return
+	if (index == -1)
+	{
+		if ((!(strcmp(str, "EXTDEF"))) || (!(strcmp(str, "EXTREF"))))
+		{
+			return 0;
+		}
+		if ((!(strcmp(str, "EQU"))) || (!(strcmp(str, "LTORG"))))
+		{
+			return locctr;
+		}
+		if ((!(strcmp(str, "CSECT"))) || (!(strcmp(str, "START"))))
+		{
+			//각 세션의 길이를 session_length 배열에 넣어줌
+			session_length[session_count++] = token_table[token_line]->location;
+			locctr = 0;
+			return locctr;
+		}
+		if (!(strcmp(str, "END"))) {
+			return locctr;
+		}
+		if (!(strcmp(str, "RESW")))
+		{
+			locctr += atoi(token_table[token_line]->operand[0]) * 3;
+			return locctr;
+		}
+		if (!(strcmp(str, "RESB")))
+		{
+			locctr += atoi(token_table[token_line]->operand[0]);
+			return locctr;
+		}
+		if (!(strcmp(str, "WORD"))) {
+			locctr += 3;
+			return locctr;
+		}
+		//리터럴 상수 
+		if (str[0] == '=') {
+			//작은 따옴표의 갯수 빼줌
+			if (strchr(str, 'C')) {
+			while (*str != '\'')
+				str++;
+				locctr += (int)((strlen(str) - 2) * 1);
+				return locctr;
+			}
+			else if (strchr(str, 'X')) {
+				while (*str != '\'')
+					str++;
+				locctr += (int)((strlen(str)-2) * 0.5);
+				return locctr;
+			}
+		}
+		if (!(strcmp(str, "BYTE"))) {
+			char* temp = NULL;
+			temp = token_table[token_line]->operand[0];
+			//16진수로 시작시, operand 크기  계산해서 더함
+			if (strchr(temp, 'X')) {
+				while (*temp != '\'')
+					temp++;
+				locctr += (int)((strlen(temp) - 2) * 0.5);
+				return locctr;
+			}
+		}
+		//TODO MAXLEN
+	}
+	else
+	{
+		if (str[0] == '+')
+		{
+			locctr += 4;
+			return locctr;
+		}
+		if (!(strcmp(inst_table[index]->format, "2")))
+		{
+			locctr += 2;
+			return locctr;
+		}
+		if (!(strcmp(inst_table[index]->format, "3/4")))
+		{
+			locctr += 3;
+			return locctr;
+		}
 	}
 	return 0;
 }
@@ -405,63 +582,6 @@ void make_opcode_output(char *file_name)
 			}
 		}
 	}
-	// 파일 이름이 NULL 이 아닌 경우
-	else
-	{
-		FILE *file = fopen(file_name, "w");
-		for (int i = 0; i < token_line; i++)
-		{
-			//label 출력
-			if (token_table[i]->label)
-			{
-				fputs(token_table[i]->label, file);
-				fputs("\t", file);
-			}
-			else
-				fputs("\t", file);
-			//operator 출력
-			if (token_table[i]->operator)
-			{
-				fputs(token_table[i]->operator, file);
-				fputs("\t", file);
-			}
-			else
-				fputs("\t", file);
-
-			//operand 출력
-			for (int k = 0; k < 3; k++)
-			{
-				//operand 갯수는 가변적이기 때문에 operand값이 null 이 아닐때 까지 출력
-				if (token_table[i]->operand[k])
-				{
-					if (k == 0)
-						fputs(token_table[i]->operand[k], file);
-					else
-					{
-						fputs(",", file);
-						fputs(token_table[i]->operand[k], file);
-					}
-				}
-				else
-				{
-					fputs("\t", file);
-					break;
-				}
-			}
-			//opcode를 search_opcode 메소드를 활용하여 inst_table에서 찾아서 출력
-			operator_index = search_opcode(token_table[i]->operator);
-			if (operator_index != -1)
-			{
-				fputs(inst_table[operator_index]->opcode, file);
-				fputs("\n", file);
-			}
-			else
-			{
-				fputs("\n", file);
-			}
-		}
-		fclose(file);
-	}
 }
 
 /* ----------------------------------------------------------------------------------
@@ -474,9 +594,77 @@ void make_opcode_output(char *file_name)
 *
 * -----------------------------------------------------------------------------------
 */
+//심볼의 주소값 리턴
+int find_addr_symbol_from_table(char *str) {
+	for (int i = 0; i < symbol_line;i++) {
+		if (!(strcmp(sym_table[i].symbol, str))) {
+			return sym_table[i].addr;
+		}
+	}
+}
 void make_symtab_output(char *file_name)
 {
-	/* add your code here */
+	//3개의 session을 구분해줄 값
+	int session_number = 0;
+	int buffer_addr = 0, bufend_addr = 0;
+	//Token_table 에서 label값 symbol로 만들어줌
+	for (int i = 0; i < token_line;i++) {
+		//Symbol 값 존재할 떄,
+		if (token_table[i]->label) {
+			strcpy(sym_table[symbol_line].symbol, token_table[i]->label);
+			sym_table[symbol_line].addr=token_table[i]->location;
+			//RDREC 섹션 구분
+			if (!(strcmp(token_table[i]->label, "RDREC"))) {
+				session_number++;
+				sym_table[symbol_line].addr = 0;
+			}
+			//WRREC 섹션 구분
+			if (!(strcmp(token_table[i]->label, "WRREC"))) {
+				session_number++;
+				sym_table[symbol_line].addr = 0;
+			}
+			sym_table[symbol_line].session = session_number;
+			//첫번째 session의 MAXLEN 값 할당
+			if (!(strcmp(token_table[i]->label, "MAXLEN")) && (sym_table[symbol_line].session == 0)) {
+				buffer_addr = find_addr_symbol_from_table("BUFFER");
+				bufend_addr = find_addr_symbol_from_table("BUFEND");
+				sym_table[symbol_line].addr = bufend_addr - buffer_addr;
+			}
+			symbol_line++;
+
+		}
+	}
+
+	
+	//인자가 NULL 일 경우, 표준 출력
+	if (file_name == NULL)
+	{
+		for (int i = 0; i < symbol_line; i++)
+		{
+			if (sym_table[i].symbol)
+			{
+				if (!(strcmp(sym_table[i].symbol, "RDREC")) || !(strcmp(sym_table[i].symbol, "WRREC")))
+					fputs("\n", stdout);
+				fputs(sym_table[i].symbol, stdout);
+				fprintf(stdout,"\t%X\n",sym_table[i].addr);
+			}
+		}
+	}
+	// 입력받은 file_name 인자에 출력
+	else
+	{
+		FILE *file = fopen(file_name, "w");
+			for (int i = 0; i < symbol_line; i++)
+			{
+				if (sym_table[i].symbol)
+				{
+					if (!(strcmp(sym_table[i].symbol, "RDREC")) || !(strcmp(sym_table[i].symbol, "WRREC")))
+						fputs("\n", file);
+					fputs(sym_table[i].symbol, file);
+					fprintf(file, "\t%X\n", sym_table[i].addr);
+				}
+			}
+	}
 }
 
 /* ----------------------------------------------------------------------------------
@@ -489,14 +677,57 @@ void make_symtab_output(char *file_name)
 *
 * -----------------------------------------------------------------------------------
 */
-void make_literaltab_output(char *filen_ame)
-{
-	/* add your code here */
+//literal 문자의 특수문자 지워주는 함수 
+char* literal_erase_quote(char * ptr) {
+	char* buffer = (char*)malloc(sizeof(char) * 10);
+	while (*ptr != '\'')
+	{
+		ptr++;
+	}
+	strcpy(buffer, ptr + 1);
+	buffer[strlen(buffer) - 1] = '\0';
+	return buffer;
 }
-
-/* --------------------------------------------------------------------------------*
-* ------------------------- 추후 프로젝트에서 사용할 함수 --------------------------*
-* --------------------------------------------------------------------------------*/
+//literal 테이블 출력
+void make_literaltab_output(char* file_name)
+{
+	char* temp = NULL;
+	//literal 주소 할당
+	for (int i = 0; i < literal_line; i++) {
+		//literal의 주소를 가지고 있는 token_table
+		int token_index = literal_table[i].token_index;
+		literal_table[i].addr = token_table[token_index]->location;
+	}
+	//인자의 값이 NULL일 때,
+	if (file_name == NULL)
+	{
+		for (int i = 0; i < literal_line; i++)
+		{
+			if (literal_table[i].literal)
+			{
+				//'=' , ''', 과 같은 특수 문자 제거 후 출력
+				temp = literal_erase_quote(&(literal_table[i].literal));
+				fputs(temp, stdout);
+				fprintf(stdout, "\t%X\n", literal_table[i].addr);
+			}
+		}
+	}
+	// 입력받은 인자에 출력
+	else
+	{
+		FILE* file = fopen(file_name, "w");
+		for (int i = 0; i < literal_line; i++)
+		{
+			if (literal_table[i].literal)
+			{
+				//'=' , ''', 과 같은 특수 문자 제거 후 출력
+				temp = literal_erase_quote(&(literal_table[i].literal));
+				fputs(temp, file);
+				fprintf(file, "\t%X\n", literal_table[i].addr);
+			}
+		}
+	}
+}
 
 /* ----------------------------------------------------------------------------------
 * 설명 : 어셈블리 코드를 기계어 코드로 바꾸기 위한 패스2 과정을 수행하는 함수이다.
