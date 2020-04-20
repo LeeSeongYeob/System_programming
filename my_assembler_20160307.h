@@ -42,7 +42,7 @@ struct token_unit
     char *operator;             //명령어 라인 중 operator
     char *operand[MAX_OPERAND]; //명령어 라인 중 operand
     char *comment;              //명령어 라인 중 comment
-    // char nixbpe;
+    char nixbpe;
     int location; // 추후 프로젝트에서 사용된다.
 };
 
@@ -50,6 +50,15 @@ typedef struct token_unit token;
 token *token_table[MAX_LINES];
 static int token_line;
 
+//주소 관리 배열
+struct address
+{
+    char* operator;
+    int location;   //메모리 할당 주소
+};
+//int address[MAX_LINES];
+struct address address[100];
+static int address_line;
 /*
  * 심볼을 관리하는 구조체이다.
  * 심볼 테이블은 심볼 이름, 심볼의 위치로 구성된다.
@@ -90,9 +99,25 @@ static int literal_line;
 static int literal_index;
 
 static int locctr;
-//세션 길이를 저장할 배열
-int session_length[4];
+//각 세션의 정보를 저장할 구조체
+struct Session_info
+{
+int session_length;
+char session_name[7];
+
+};
+struct Session_info session[5];
 static int session_count;
+
+//TODO modify values?
+
+//오브젝트 코드 관리할 구조체
+struct object_code
+{
+    int session;
+    char object[10];
+
+};
 //--------------
 
 static char *input_file;
@@ -115,6 +140,8 @@ int search_literal_table(char* str);
 char* literal_erase_quote(char* ptr);
 
 int find_addr_symbol_from_table(char* str);
+
+int find_addr_literal_from_table(char* str);
 
 /* 추후 프로젝트에서 사용하게 되는 함수*/
 void make_symtab_output(char *file_name);

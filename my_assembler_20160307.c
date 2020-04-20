@@ -41,11 +41,11 @@ int main(int args, char *arg[])
 	//make_opcode_output(NULL);
 	 make_symtab_output("Symtab_output_20160307.txt");
 	 make_literaltab_output("literaltab_output_20160307.txt");
-	// if (assem_pass2() < 0)
-	// {
-	// 	printf("assem_pass2: 패스2 과정에서 실패하였습니다.  \n");
-	// 	return -1;
-	// }
+	 if (assem_pass2() < 0)
+	 {
+	 	printf("assem_pass2: 패스2 과정에서 실패하였습니다.  \n");
+	 	return -1;
+	 }
 
 	// make_objectcode_output("output_00000000");
 	return 0;
@@ -190,6 +190,7 @@ void clear_token_table(token *token_table)
 	for (int i = 0; i < MAX_OPERAND; i++)
 		token_table->operand[i] = NULL;
 	token_table->location = 0;
+	token_table->nixbpe = 0;
 }
 int token_parsing(char *str)
 {
@@ -354,6 +355,7 @@ int search_literal_table(char *str) {
  *		
  * ----------------------------------------------------------------------------------
  */
+//주어진  operator의 값과 같은 inst_table 인덱스 리턴
 int search_opcode(char *str)
 {
 	char *temp = str;
@@ -406,13 +408,16 @@ static int assem_pass1(void)
 		}
 	}
 
-	//TODO : location 할당 부분
+	// 각 토큰테이블에 location 할당 
 	for (int index = 0; index < token_line; index++) {
 		if (index == (token_line - 1)) {
-			session_length[session_count] = location_allocation(token_table[index]->operator,index);
+			//프로그램 마지막줄 실행시, 길이 session_length배열에 넣어줌
+			session[session_count].session_length = location_allocation(token_table[index]->operator,index);
 			break;
 		}
-		token_table[index+1]->location = location_allocation(token_table[index]->operator,index);
+		//token_table[index+1]->location = location_allocation(token_table[index]->operator,index);
+		address[address_line].operator = token_table[index]->operator;	//address 구조체에 메모리 주소값 넣어줌
+		address[++address_line].location = location_allocation(token_table[index]->operator,index);	//다음 operator시작 주소에 값을 더해줌
 	}
 
 
@@ -435,10 +440,16 @@ int location_allocation(char *str, int token_line)
 		{
 			return locctr;
 		}
-		if ((!(strcmp(str, "CSECT"))) || (!(strcmp(str, "START"))))
+		if ((!(strcmp(str, "START")))) {
+			//시작한 프로그램의 이름 session  배열에 넣어줌
+			strcpy(session[session_count].session_name, token_table[token_line]->label);
+		}
+		if ((!(strcmp(str, "CSECT"))))
 		{
-			//각 세션의 길이를 session_length 배열에 넣어줌
-			session_length[session_count++] = token_table[token_line]->location;
+			//CSECT 만날 시, 각 세션의 길이를 session 배열에 넣어줌
+			//session[session_count++].session_length = token_table[token_line]->location;
+			session[session_count++].session_length = address[token_line].location;
+			strcpy(session[session_count].session_name, token_table[token_line]->label);
 			locctr = 0;
 			return locctr;
 		}
@@ -486,7 +497,6 @@ int location_allocation(char *str, int token_line)
 				return locctr;
 			}
 		}
-		//TODO MAXLEN
 	}
 	else
 	{
@@ -594,13 +604,14 @@ void make_opcode_output(char *file_name)
 *
 * -----------------------------------------------------------------------------------
 */
-//심볼의 주소값 리턴
+//심볼의 주소값 리턴, 없을 시, -1 리턴
 int find_addr_symbol_from_table(char *str) {
 	for (int i = 0; i < symbol_line;i++) {
 		if (!(strcmp(sym_table[i].symbol, str))) {
 			return sym_table[i].addr;
 		}
 	}
+	return -1;
 }
 void make_symtab_output(char *file_name)
 {
@@ -678,7 +689,7 @@ void make_symtab_output(char *file_name)
 * -----------------------------------------------------------------------------------
 */
 //literal 문자의 특수문자 지워주는 함수 
-char* literal_erase_quote(char * ptr) {
+char* literal_erase_quote(char* ptr) {
 	char* buffer = (char*)malloc(sizeof(char) * 10);
 	while (*ptr != '\'')
 	{
@@ -687,6 +698,15 @@ char* literal_erase_quote(char * ptr) {
 	strcpy(buffer, ptr + 1);
 	buffer[strlen(buffer) - 1] = '\0';
 	return buffer;
+}
+
+int find_addr_literal_from_table(char *str) {
+	for (int i = 0; i < literal_line;i++) {
+		if (!(strcmp(literal_table[i].literal, str))) {
+			return literal_table[i].addr;
+		}
+	}
+	return -1;
 }
 //literal 테이블 출력
 void make_literaltab_output(char* file_name)
@@ -741,8 +761,122 @@ void make_literaltab_output(char* file_name)
 */
 static int assem_pass2(void)
 {
+	char bits = 0;
+	char* pinst_opcode = NULL;
+	char address_buffer[10] = { 0, };	//상대주소 연산을 위한 버퍼
+	char object_code[10] = { 0, };		//object_code를 담을 버퍼
+	int inst_index = 0;		//명령어 opcode 할당을 위한 index
+	//토큰 테이블에 object코드 값 할당.
+	for (int i = 0; i < token_line; i++) {
+		//TODO : 리터럴 값과 심볼값 들어가있는 방식 확인하기
+		//inst 가 존재시 ,opcode 가져옴
+		inst_index = search_opcode(token_table[i]->operator);
+		if (inst_index > 0) {
+			pinst_opcode = inst_table[inst_index]->opcode;
+			//object_code의 배열에 명령어 opcode 첫번째 값 넣어줌
+			address_buffer[0] =  pinst_opcode[0];
+			//opcode 의 값에 따른 주소 값
+			if (!(strcmp(inst_table[inst_index]->format, "3/4"))) {
+				switch (*(pinst_opcode + 1))
+				{
+				case 'C':
+					token_table[i]->nixbpe = 0x03;
+					break;
+				case '4':
+					token_table[i]->nixbpe = 0x01;
+					break;
+				case '8':
+					token_table[i]->nixbpe = 0x02;
+					break;
+				case '0':
+					token_table[i]->nixbpe = 0x00;
+					break;
 
-	/* add your code here */
+				}
+					token_table[i]->nixbpe <<= 6;	//왼쪽 끝으로 보낸다.
+				/*********operand 에 따른 주조시정 방식 값. 형식 확인 후, 특수문자 제거**************/
+				char** ptr = NULL;
+				if (token_table[i]->operand[0]) {
+					ptr = &(token_table[i]->operand);
+					//리터럴
+				/*	if (ptr[0][0] == '=') {
+
+					}*/
+					if (ptr[0][0] == '#') { //imediate.
+						token_table[i]->nixbpe |= 0x10;
+						token_table[i]->operand[0] = token_table[i]->operand[0] + 1;
+					}
+					else if (ptr[0][0] == '@') { //indirect
+						token_table[i]->nixbpe |= 0x20;
+						token_table[i]->operand[0] = token_table[i]->operand[0] + 1;
+					}
+					//루프를 도는 문장일 때,
+					else if ((ptr[1] != NULL) && (ptr[1][0]=='X')) { //roop
+						token_table[i]->nixbpe |= 0x38;
+					}
+					else {	//simple addressing
+						token_table[i]->nixbpe |= 0x30;
+					}
+				}
+				//operand가 존재하지 않는 RSUB
+				else {
+					token_table[i]->nixbpe |= 0x30;
+					printf("%s의 object 값 : %s\n", token_table[i]->operator,object_code);
+					continue;
+				}
+				/******PC-relative 및 Direct-addressing 주소 계산*******/
+				//4형식, 직접 주소 지정방식
+				if (token_table[i]->operator[0] == '+') {
+					token_table[i]->nixbpe |= 0x01;
+				}
+				/*
+				//리터럴 방식
+				else if () {
+
+				}
+				//imediate 방식
+				else if () {
+
+				}
+				*/
+				else {
+				//operand의 값이 심볼 테이블에 있는지 검사. 있으면 pc-relative
+					int address_symbol = 0;
+					address_symbol = find_addr_symbol_from_table(token_table[i]->operand[0]);
+					if (address_symbol >= 0) {
+						token_table[i]->nixbpe |= 0x02;
+					}
+				}
+				//nixpbe 값 object 배열에 넣어줌
+				//명령어 배열 만들기
+				object_code[0] = token_table[i]->nixbpe >> 4;	//연산의 편리성을 위해 4비트 밀어줌
+				object_code[0] &= 0x0F;							//음수 비트 제거
+				object_code[1] = token_table[i]->nixbpe & 0x0F; //음수 비트 제거
+				sprintf(&(address_buffer[1]), "%X", object_code[0]);	//adress 버퍼에 16진수형으로 복사
+				sprintf(&(address_buffer[2]), "%X", object_code[1]);	//adress 버퍼에 16진수형으로 복사
+				printf("%s의 object 값 : %s\n", token_table[i]->operator,address_buffer);
+				//printf("%s의 object 값 : %s\n", token_table[i]->operator,address_buffer);
+
+
+				//printf("%s의 주소 : %d, opcode 값 : %s\tnixbpe 값 : %d\n",token_table[i]->operator,token_table[i]->location, inst_table[inst_index]->opcode,token_table[i]->nixbpe);
+
+			}
+			//TODO : format이 2형식인 경우
+			else {
+				//token_table[i]->operator
+				printf("%s의 object 값 : %s\n", token_table[i]->operator,object_code);
+			}
+		}
+		//operator의 값이 없는 부분.
+		else {
+			//리터럴타입 이나 resb 관리..
+			continue;
+		}
+
+
+
+	}
+	return 0;
 }
 
 /* ----------------------------------------------------------------------------------
